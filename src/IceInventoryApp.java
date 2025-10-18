@@ -18,7 +18,7 @@ import java.util.List;
  * - Left nav: Inventory, sales (customer details), reports (daily), settings (theme)
  * - Inventory table columns: Item ID, Type, Quantity, Unit Price (LKR), Last Updated
  * - Edit Unit Price directly in table (LKR formatting)
- * - Types: "Manufactured" and "Resell"
+ * - Types: "Manufactured", "Resell", and "WASTE" (WASTE is not sellable; tracked & highlighted)
  * - Sales form (right) generates bill + records sale + updates stock
  * - Sales History table (customers who bought)
  * - Daily Reports (date field)
@@ -69,7 +69,7 @@ public class IceInventoryApp {
     // Inventory item
     static class InventoryItem {
         String itemId;
-        String type; // "Manufactured" or "Resell"
+        String type; // "Manufactured" or "Resell" or "WASTE"
         int quantity;
         double unitPrice;
         Date lastUpdated;
@@ -94,7 +94,7 @@ public class IceInventoryApp {
     }
 
     private void initialize() {
-        frame = new JFrame("Sagacious Pvt Holdings - Inventory Management");
+        frame = new JFrame("Sagacious PVT Holdings - Inventory Management");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(1200, 760);
         frame.setLocationRelativeTo(null);
@@ -146,7 +146,7 @@ public class IceInventoryApp {
         nav.setBorder(new EmptyBorder(12, 8, 12, 8));
         applyNavColors(nav);
 
-        JLabel title = new JLabel("<html><b style='color:black'>Sagacious ICE</b><br/><small style='color:#0B6FA8'>IMS</small></html>");
+        JLabel title = new JLabel("<html><b style='color:black'>Sagacious</b><br/><small style='color:#0B6FA8'>IMS</small></html>");
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
         nav.add(title);
         nav.add(Box.createRigidArea(new Dimension(0, 12)));
@@ -183,7 +183,7 @@ public class IceInventoryApp {
         header.setBorder(new EmptyBorder(8, 12, 8, 12));
         applyHeaderColors(header);
 
-        JLabel appTitle = new JLabel("Sagacious ICE Factory - Inventory");
+        JLabel appTitle = new JLabel("Sagacious Ice Factory");
         appTitle.setFont(appTitle.getFont().deriveFont(Font.BOLD, 16f));
         header.add(appTitle, BorderLayout.WEST);
 
@@ -223,7 +223,7 @@ public class IceInventoryApp {
         cards.setPreferredSize(new Dimension(0, 100));
         cards.add(makeStatCard("Total Cubes (Manufactured)", () -> getTotalByType("Manufactured")));
         cards.add(makeStatCard("Total Cubes (Resell)", () -> getTotalByType("Resell")));
-        cards.add(makeStatCard("Useless Cubes (Waste)", this::getTotalWaste)); // placeholder: returns 0
+        cards.add(makeStatCard("Useless Cubes (Waste)", this::getTotalWaste));
         cards.add(makeStatCard("Available Stock", this::getTotalStock));
         center.add(cards, BorderLayout.NORTH);
 
@@ -260,7 +260,7 @@ public class IceInventoryApp {
         inventoryTable = new JTable(inventoryModel);
         inventoryTable.setRowHeight(28);
 
-        // Unit price renderer
+        // Unit price renderer (show LKR)
         inventoryTable.getColumnModel().getColumn(3).setCellRenderer(new DefaultTableCellRenderer() {
             @Override
             public void setValue(Object value) {
@@ -278,17 +278,24 @@ public class IceInventoryApp {
             }
         });
 
-        // Low-stock color
+        // Renderer: WASTE rows red, low-stock orange, else theme color
         inventoryTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value,
                                                            boolean isSelected, boolean hasFocus, int row, int column) {
                 Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                try {
-                    int qty = Integer.parseInt(String.valueOf(table.getModel().getValueAt(row, 2)));
-                    if (qty <= 5) c.setForeground(new Color(180, 85, 0)); // orange
-                    else c.setForeground(darkTheme ? Color.WHITE : Color.BLACK);
-                } catch (Exception ignored) { }
+                String type = String.valueOf(table.getModel().getValueAt(row, 1));
+                int qty;
+                try { qty = Integer.parseInt(String.valueOf(table.getModel().getValueAt(row, 2))); }
+                catch (Exception e) { qty = 0; }
+
+                if ("WASTE".equalsIgnoreCase(type)) {
+                    c.setForeground(Color.RED.darker());
+                } else if (qty <= 5) {
+                    c.setForeground(new Color(180, 85, 0)); // orange
+                } else {
+                    c.setForeground(darkTheme ? Color.WHITE : Color.BLACK);
+                }
                 return c;
             }
         });
@@ -380,7 +387,6 @@ public class IceInventoryApp {
 
         run.addActionListener(e -> {
             String dateStr = dateField.getText().trim();
-            // Very simple validation: expect yyyy-MM-dd prefix
             double total = 0.0;
             int transactions = 0;
             for (SaleRecord s : salesList) {
@@ -471,7 +477,7 @@ public class IceInventoryApp {
         JTextField customerPhone = new JTextField();
         formPanel.add(makeLabeledField("Customer Phone No:", customerPhone));
 
-        // Type of Cube (Manufactured / Resell)
+        // Type of Cube (Manufactured / Resell) -- WASTE is intentionally not sellable
         JComboBox<String> typeCombo = new JComboBox<>(new String[]{"Manufactured", "Resell"});
         formPanel.add(makeLabeledField("Type of Cube:", typeCombo));
 
@@ -609,8 +615,11 @@ public class IceInventoryApp {
     }
 
     private int getTotalWaste() {
-        // Waste tracking removed in simplified design
-        return 0;
+        // Count rows where type = WASTE
+        return inventoryMap.values().stream()
+                .filter(i -> "WASTE".equalsIgnoreCase(i.type))
+                .mapToInt(i -> i.quantity)
+                .sum();
     }
 
     private int getTotalStock() {
@@ -622,6 +631,7 @@ public class IceInventoryApp {
         addInventoryItem(new InventoryItem("I-101", "Manufactured", 50, 1.10));
         addInventoryItem(new InventoryItem("R-200", "Resell", 200, 0.80));
         addInventoryItem(new InventoryItem("R-201", "Resell", 30, 0.45));
+        addInventoryItem(new InventoryItem("W-001", "WASTE", 12, 0.00)); // example waste row
         refreshInventoryTable();
         refreshSalesTable();
     }
@@ -660,14 +670,15 @@ public class IceInventoryApp {
 
     private void openAddItemDialog() {
         JDialog dlg = new JDialog(frame, "Add Inventory Item", true);
-        dlg.setSize(420, 300);
+        dlg.setSize(420, 320);
         dlg.setLocationRelativeTo(frame);
         dlg.setLayout(new BorderLayout());
 
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         JTextField idField = new JTextField("AUTO-" + (inventoryMap.size() + 1));
-        JComboBox<String> typeCombo = new JComboBox<>(new String[]{"Manufactured", "Resell"});
+        // >>> Include WASTE here <<<
+        JComboBox<String> typeCombo = new JComboBox<>(new String[]{"Manufactured", "Resell", "WASTE"});
         JSpinner qty = new JSpinner(new SpinnerNumberModel(1, 0, 100000, 1));
         JFormattedTextField price = new JFormattedTextField(java.text.NumberFormat.getNumberInstance());
         price.setValue(0.0);
@@ -729,7 +740,8 @@ public class IceInventoryApp {
     private boolean attemptSaleAndUpdateInventory(String type, int qtyNeeded) {
         // Gather candidates of the requested type (largest stock first)
         List<InventoryItem> candidates = new ArrayList<>();
-        for (InventoryItem it : inventoryMap.values()) if (it.type.equals(type)) candidates.add(it);
+        for (InventoryItem it : inventoryMap.values())
+            if (it.type.equals(type)) candidates.add(it);
         candidates.sort((a, b) -> Integer.compare(b.quantity, a.quantity));
 
         int totalAvailable = candidates.stream().mapToInt(i -> i.quantity).sum();
@@ -754,7 +766,7 @@ public class IceInventoryApp {
 
     private String generateBillText(int billNo, String customerName, String phone, String type, int qty, double unitPrice, String paymentMethod, String dateTime) {
         StringBuilder sb = new StringBuilder();
-        sb.append("            Sagacious Pvt Holdings - Bill\n");
+        sb.append("            Sagacious PVT Holdings - Bill\n");
         sb.append("            -------------------\n");
         sb.append(String.format("Bill No: %d\n", billNo));
         sb.append(String.format("Date & Time: %s\n", dateTime));

@@ -13,19 +13,94 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
 
-/**
- * Ice Inventory Management System (Swing) - SINGLE FILE
- * - Left nav: Inventory, sales (customer details), reports (daily), settings (theme)
- * - Inventory table columns: Item ID, Type, Quantity, Unit Price (LKR), Last Updated
- * - Edit Unit Price directly in table (LKR formatting)
- * - Types: "Manufactured", "Resell", and "WASTE" (WASTE is not sellable; tracked & highlighted)
- * - Sales form (right) generates bill + records sale + updates stock
- * - Sales History table (customers who bought)
- * - Daily Reports (date field)
- * - Settings: Light/Dark theme
- * - In-memory demo (no DB)
- */
+/* =========================
+   Simple modal login dialog
+   ========================= */
+class LoginDialog extends JDialog {
+    private JTextField userField;
+    private JPasswordField passField;
+    private boolean succeeded = false;
+    private String username = "";
+
+    // Demo users (username -> password). Replace with DB lookup later.
+    private static final Map<String,String> USERS = new HashMap<>();
+    static {
+        USERS.put("admin", "admin123");
+        USERS.put("staff", "staff123");
+    }
+
+    LoginDialog(Frame parent) {
+        super(parent, "Sign in", true);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setSize(360, 200);
+        setLocationRelativeTo(parent);
+
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(new EmptyBorder(12,12,12,12));
+
+        userField = new JTextField();
+        passField = new JPasswordField();
+
+        panel.add(makeRow("Username:", userField));
+        panel.add(makeRow("Password:", passField));
+
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton btnLogin = new JButton("Login");
+        JButton btnCancel = new JButton("Cancel");
+        btns.add(btnLogin); btns.add(btnCancel);
+        panel.add(Box.createVerticalStrut(8));
+        panel.add(btns);
+
+        btnLogin.addActionListener(e -> {
+            String u = userField.getText().trim();
+            String p = new String(passField.getPassword());
+            if (authenticate(u, p)) {
+                username = u;
+                succeeded = true;
+                dispose();
+            } else {
+                JOptionPane.showMessageDialog(this, "Invalid username or password.");
+                passField.setText("");
+                succeeded = false;
+            }
+        });
+        btnCancel.addActionListener(e -> {
+            succeeded = false;
+            dispose();
+        });
+
+        setContentPane(panel);
+    }
+
+    private JPanel makeRow(String label, JComponent field) {
+        JPanel row = new JPanel(new BorderLayout(8,0));
+        JLabel l = new JLabel(label);
+        l.setPreferredSize(new Dimension(100, 24));
+        row.add(l, BorderLayout.WEST);
+        row.add(field, BorderLayout.CENTER);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return row;
+    }
+
+    private boolean authenticate(String u, String p) {
+        return USERS.containsKey(u) && USERS.get(u).equals(p);
+    }
+    boolean isSucceeded() { return succeeded; }
+    String getUsername() { return username; }
+}
+
+/* =========================
+   Main Application (Swing)
+   ========================= */
 public class IceInventoryApp {
+
+    private final String currentUser;
+
+    public IceInventoryApp(String currentUser) {
+        this.currentUser = (currentUser == null || currentUser.isEmpty()) ? "Admin" : currentUser;
+    }
 
     private JFrame frame;
     private JTable inventoryTable;
@@ -86,13 +161,21 @@ public class IceInventoryApp {
     private final Map<String, InventoryItem> inventoryMap = new LinkedHashMap<>();
     private boolean darkTheme = false;
 
+    /* ---------- Entry point with Login ---------- */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            IceInventoryApp app = new IceInventoryApp();
-            app.initialize();
+            LoginDialog login = new LoginDialog(null);
+            login.setVisible(true);
+            if (login.isSucceeded()) {
+                IceInventoryApp app = new IceInventoryApp(login.getUsername());
+                app.initialize();
+            } else {
+                System.exit(0);
+            }
         });
     }
 
+    /* ---------- Initialize UI ---------- */
     private void initialize() {
         frame = new JFrame("Sagacious PVT Holdings - Inventory Management");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -139,6 +222,37 @@ public class IceInventoryApp {
         frame.setVisible(true);
     }
 
+    /* ---------- Header & Navigation ---------- */
+    private JPanel buildHeader() {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBorder(new EmptyBorder(8, 12, 8, 12));
+        applyHeaderColors(header);
+
+        JLabel appTitle = new JLabel("Sagacious Ice Factory");
+        appTitle.setFont(appTitle.getFont().deriveFont(Font.BOLD, 16f));
+        header.add(appTitle, BorderLayout.WEST);
+
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        right.setOpaque(false);
+
+        JTextField search = new JTextField(20);
+        search.setMaximumSize(new Dimension(200, 30));
+        search.setToolTipText("Search inventory...");
+        right.add(search);
+
+        JLabel dt = new JLabel();
+        DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        dt.setText(df.format(new Date()));
+        new javax.swing.Timer(1000, e -> dt.setText(df.format(new Date()))).start();
+        right.add(dt);
+
+        JLabel avatar = new JLabel(currentUser);
+        right.add(avatar);
+
+        header.add(right, BorderLayout.EAST);
+        return header;
+    }
+
     private JPanel buildLeftNav() {
         JPanel nav = new JPanel();
         nav.setPreferredSize(new Dimension(180, 0));
@@ -178,41 +292,12 @@ public class IceInventoryApp {
         else nav.setBackground(new Color(230, 245, 255));
     }
 
-    private JPanel buildHeader() {
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBorder(new EmptyBorder(8, 12, 8, 12));
-        applyHeaderColors(header);
-
-        JLabel appTitle = new JLabel("Sagacious Ice Factory");
-        appTitle.setFont(appTitle.getFont().deriveFont(Font.BOLD, 16f));
-        header.add(appTitle, BorderLayout.WEST);
-
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        right.setOpaque(false);
-
-        JTextField search = new JTextField(20);
-        search.setMaximumSize(new Dimension(200, 30));
-        search.setToolTipText("Search inventory...");
-        right.add(search);
-
-        JLabel dt = new JLabel();
-        DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        dt.setText(df.format(new Date()));
-        new javax.swing.Timer(1000, e -> dt.setText(df.format(new Date()))).start();
-        right.add(dt);
-
-        JLabel avatar = new JLabel("Admin");
-        right.add(avatar);
-
-        header.add(right, BorderLayout.EAST);
-        return header;
-    }
-
     private void applyHeaderColors(JPanel header) {
         if (darkTheme) header.setBackground(new Color(45, 45, 45));
         else header.setBackground(new Color(230, 245, 255));
     }
 
+    /* ---------- Inventory View ---------- */
     private JPanel buildInventoryPanel() {
         JPanel center = new JPanel(new BorderLayout());
         center.setBorder(new EmptyBorder(12, 12, 12, 12));
@@ -339,6 +424,7 @@ public class IceInventoryApp {
         return card;
     }
 
+    /* ---------- Sales History View ---------- */
     private JPanel buildSalesHistoryPanel() {
         JPanel p = new JPanel(new BorderLayout());
         p.setBorder(new EmptyBorder(12, 12, 12, 12));
@@ -364,6 +450,7 @@ public class IceInventoryApp {
         return p;
     }
 
+    /* ---------- Reports View ---------- */
     private JPanel buildReportsPanel() {
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
@@ -407,6 +494,7 @@ public class IceInventoryApp {
         return p;
     }
 
+    /* ---------- Settings View ---------- */
     private JPanel buildSettingsPanel() {
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
@@ -425,6 +513,22 @@ public class IceInventoryApp {
         });
         themePanel.add(themeToggle);
         p.add(themePanel);
+
+        // Optional: Logout button
+        JButton logout = new JButton("Logout");
+        logout.addActionListener(e -> {
+            frame.dispose();
+            LoginDialog login = new LoginDialog(null);
+            login.setVisible(true);
+            if (login.isSucceeded()) {
+                IceInventoryApp app = new IceInventoryApp(login.getUsername());
+                app.initialize();
+            } else {
+                System.exit(0);
+            }
+        });
+        p.add(Box.createVerticalStrut(8));
+        p.add(logout);
 
         p.add(Box.createRigidArea(new Dimension(0, 10)));
         p.add(new JLabel("Settings apply immediately."));
@@ -459,6 +563,7 @@ public class IceInventoryApp {
         }
     }
 
+    /* ---------- Sales Form (right side) ---------- */
     private JPanel buildSalesPanel() {
         JPanel right = new JPanel(new BorderLayout());
         right.setBorder(new EmptyBorder(12, 12, 12, 12));
@@ -608,8 +713,7 @@ public class IceInventoryApp {
         return panel;
     }
 
-    // ---------- Inventory / Stats helpers ----------
-
+    /* ---------- Inventory / Stats helpers ---------- */
     private int getTotalByType(String type) {
         return inventoryMap.values().stream().filter(i -> i.type.equals(type)).mapToInt(i -> i.quantity).sum();
     }
@@ -677,7 +781,7 @@ public class IceInventoryApp {
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         JTextField idField = new JTextField("AUTO-" + (inventoryMap.size() + 1));
-        // >>> Include WASTE here <<<
+        // Include WASTE here
         JComboBox<String> typeCombo = new JComboBox<>(new String[]{"Manufactured", "Resell", "WASTE"});
         JSpinner qty = new JSpinner(new SpinnerNumberModel(1, 0, 100000, 1));
         JFormattedTextField price = new JFormattedTextField(java.text.NumberFormat.getNumberInstance());
